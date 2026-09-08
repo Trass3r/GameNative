@@ -11,14 +11,28 @@ import java.io.File
 import kotlin.coroutines.coroutineContext
 
 /**
- * Imports a user-picked folder (a SAF tree URI from OpenDocumentTree) into
- * [CustomGameScanner.importRootPath], needing only the picker grant. The bytes must pass
+ * Imports a user-picked folder (a SAF tree URI from OpenDocumentTree) into the selected
+ * managed destination, needing only the picker grant. The bytes must pass
  * through this app for wine to be able to read them under scoped storage, so a "move" is
  * per-file copy + verify + delete-source rather than a rename.
  */
 object CustomGameImporter {
 
+    enum class Destination {
+        EXTERNAL_MANAGED,
+        INTERNAL_PRIVATE,
+    }
+
     data class Progress(val copiedBytes: Long, val currentFile: String)
+
+    internal fun resolveImportRoot(
+        destination: Destination,
+        externalManagedRoot: String = CustomGameScanner.importRootPath,
+        internalRoot: String = CustomGameScanner.internalRootPath,
+    ): String = when (destination) {
+        Destination.EXTERNAL_MANAGED -> externalManagedRoot
+        Destination.INTERNAL_PRIVATE -> internalRoot
+    }
 
     /**
      * @param deleteSource delete each source file once its copy verifies (move semantics)
@@ -28,6 +42,7 @@ object CustomGameImporter {
         context: Context,
         treeUri: Uri,
         deleteSource: Boolean,
+        destination: Destination = Destination.EXTERNAL_MANAGED,
         onProgress: (Progress) -> Unit = {},
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -36,7 +51,7 @@ object CustomGameImporter {
                 return@withContext Result.failure(IllegalArgumentException("Selected item is not a folder"))
             }
 
-            val importRoot = CustomGameScanner.importRootPath
+            val importRoot = resolveImportRoot(destination)
             val name = sanitizeName(src.name)
             var dest = File(importRoot, name)
             var suffix = 1

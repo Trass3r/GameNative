@@ -33,6 +33,20 @@ import kotlin.text.ifEmpty
 
 object CustomGameScanner {
 
+    val internalRootPath: String
+        get() {
+            val dir = File(DownloadService.baseDataDirPath, "CustomGames")
+            if (!dir.exists()) {
+                val created = dir.mkdirs()
+                if (created) {
+                    Timber.tag("CustomGameScanner").d("Created internal CustomGames folder: ${dir.path}")
+                } else {
+                    Timber.tag("CustomGameScanner").w("Failed to create internal CustomGames folder: ${dir.path}")
+                }
+            }
+            return dir.path
+        }
+
     // Default root path for Custom Games. Always use the app's external storage sandbox
     // (Android/data/<package>/CustomGames) when available; fall back to internal only if external is unavailable.
     // This ensures the folder is visible via MTP/file managers.

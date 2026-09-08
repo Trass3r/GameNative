@@ -39,6 +39,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -70,11 +72,11 @@ import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import app.gamenative.BuildConfig
 import app.gamenative.PrefManager
 import app.gamenative.PluviaApp
 import app.gamenative.R
@@ -118,6 +120,7 @@ import app.gamenative.service.amazon.AmazonService
 import app.gamenative.service.epic.EpicService
 import app.gamenative.service.gog.GOGService
 import app.gamenative.utils.CustomGameScanner
+import app.gamenative.utils.CustomGameImporter
 import app.gamenative.utils.PlatformOAuthHandlers
 import app.gamenative.utils.SteamUtils
 import com.posthog.PostHog
@@ -187,6 +190,12 @@ private fun isGameControllerConnected(): Boolean =
             sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
     }
 
+private enum class CustomGameStorageChoice {
+    IN_PLACE,
+    COPY_EXTERNAL,
+    COPY_INTERNAL,
+}
+
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryScreenContent(
@@ -194,7 +203,7 @@ private fun LibraryScreenContent(
     listState: LazyGridState,
     sheetState: SheetState,
     importState: LibraryViewModel.CustomGameImportState = LibraryViewModel.CustomGameImportState(),
-    onImportCustomGame: (Uri, Boolean) -> Unit = { _, _ -> },
+    onImportCustomGame: (Uri, Boolean, CustomGameImporter.Destination) -> Unit = { _, _, _ -> },
     onFilterChanged: (AppFilter) -> Unit,
     onPageChange: (Int) -> Unit,
     onModalBottomSheet: (Boolean) -> Unit,
@@ -384,9 +393,8 @@ private fun LibraryScreenContent(
         }
     }
 
-    // Dialog state for add custom game prompt
     var showAddCustomGameDialog by remember { mutableStateOf(false) }
-    var dontShowAgain by remember { mutableStateOf(false) }
+    var customGameStorageChoice by rememberSaveable { mutableStateOf(CustomGameStorageChoice.COPY_EXTERNAL) }
     var previousAppCount by remember { mutableIntStateOf(state.appInfoList.size) }
     var controllerBootstrapNeeded by remember { mutableStateOf(true) }
     var rootHasFocus by remember { mutableStateOf(false) }
@@ -523,27 +531,21 @@ private fun LibraryScreenContent(
         },
     )
 
-    // Modern add path: import the picked folder into app-owned storage via the SAF grant,
-    // since the map-in-place flow needs MANAGE_EXTERNAL_STORAGE
-    var showModernImportDialog by remember { mutableStateOf(false) }
     var importRemoveOriginal by rememberSaveable { mutableStateOf(false) }
+    var importDestination by rememberSaveable {
+        mutableStateOf(CustomGameImporter.Destination.EXTERNAL_MANAGED)
+    }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
-            onImportCustomGame(uri, importRemoveOriginal)
+            onImportCustomGame(uri, importRemoveOriginal, importDestination)
         }
     }
 
-    // Handle opening folder picker (with dialog check)
+    // Handle opening folder picker
     val onAddCustomGameClick = {
-        if (BuildConfig.MODERN_ANDROID) {
-            showModernImportDialog = true
-        } else if (PrefManager.showAddCustomGameDialog) {
-            showAddCustomGameDialog = true
-        } else {
-            folderPicker.launchPicker()
-        }
+        showAddCustomGameDialog = true
     }
 
     BackHandler(enabled = isSystemMenuOpen) {
@@ -1375,46 +1377,90 @@ private fun LibraryScreenContent(
 
         }
 
-        // Pre-import dialog (modern add path)
-        if (showModernImportDialog) {
+        if (showAddCustomGameDialog) {
             AlertDialog(
-                onDismissRequest = { showModernImportDialog = false },
+                onDismissRequest = { showAddCustomGameDialog = false },
                 title = { Text(stringResource(R.string.add_custom_game_dialog_title)) },
                 text = {
                     Column {
-                        Text(stringResource(R.string.custom_game_import_dialog_message))
+                        Text(stringResource(R.string.add_custom_game_dialog_message))
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { importRemoveOriginal = !importRemoveOriginal },
-                        ) {
-                            Checkbox(
-                                checked = importRemoveOriginal,
-                                onCheckedChange = { importRemoveOriginal = it },
-                            )
-                            Text(stringResource(R.string.custom_game_import_remove_original))
+                        Text(stringResource(R.string.custom_game_storage_location_label))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val options = listOf(
+                            CustomGameStorageChoice.IN_PLACE to R.string.custom_game_storage_in_place,
+                            CustomGameStorageChoice.COPY_EXTERNAL to R.string.custom_game_storage_copy_external,
+                            CustomGameStorageChoice.COPY_INTERNAL to R.string.custom_game_storage_copy_internal,
+                        )
+                        options.forEach { (choice, labelRes) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectable(
+                                        selected = customGameStorageChoice == choice,
+                                        onClick = { customGameStorageChoice = choice },
+                                        role = Role.RadioButton,
+                                    ),
+                            ) {
+                                RadioButton(
+                                    selected = customGameStorageChoice == choice,
+                                    onClick = null,
+                                )
+                                Text(stringResource(labelRes))
+                            }
+                        }
+                        if (customGameStorageChoice != CustomGameStorageChoice.IN_PLACE) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(stringResource(R.string.custom_game_import_dialog_message))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { importRemoveOriginal = !importRemoveOriginal },
+                            ) {
+                                Checkbox(
+                                    checked = importRemoveOriginal,
+                                    onCheckedChange = { importRemoveOriginal = it },
+                                )
+                                Text(stringResource(R.string.custom_game_import_remove_original))
+                            }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            showModernImportDialog = false
-                            importLauncher.launch(null)
+                            showAddCustomGameDialog = false
+                            when (customGameStorageChoice) {
+                                CustomGameStorageChoice.IN_PLACE -> {
+                                    importRemoveOriginal = false
+                                    folderPicker.launchPicker()
+                                }
+                                CustomGameStorageChoice.COPY_EXTERNAL -> {
+                                    importDestination = CustomGameImporter.Destination.EXTERNAL_MANAGED
+                                    importLauncher.launch(null)
+                                }
+                                CustomGameStorageChoice.COPY_INTERNAL -> {
+                                    importDestination = CustomGameImporter.Destination.INTERNAL_PRIVATE
+                                    importLauncher.launch(null)
+                                }
+                            }
                         },
                     ) {
-                        Text(stringResource(R.string.continue_action))
+                        Text(stringResource(android.R.string.ok))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showModernImportDialog = false }) {
+                    TextButton(onClick = { showAddCustomGameDialog = false }) {
                         Text(stringResource(R.string.cancel))
                     }
                 },
             )
         }
 
-        // Import progress dialog (modern add path)
+        // Import progress dialog (copy/import path)
         if (importState.isImporting) {
             AlertDialog(
                 onDismissRequest = { },
@@ -1436,55 +1482,6 @@ private fun LibraryScreenContent(
             )
         }
 
-        // Add custom game dialog
-        if (showAddCustomGameDialog) {
-            AlertDialog(
-                onDismissRequest = { showAddCustomGameDialog = false },
-                title = { Text(stringResource(R.string.add_custom_game_dialog_title)) },
-                text = {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.add_custom_game_dialog_message),
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = dontShowAgain,
-                                onCheckedChange = { dontShowAgain = it },
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(R.string.add_custom_game_dont_show_again),
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            if (dontShowAgain) {
-                                PrefManager.showAddCustomGameDialog = false
-                            }
-                            showAddCustomGameDialog = false
-                            folderPicker.launchPicker()
-                        },
-                    ) {
-                        Text(stringResource(android.R.string.ok))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showAddCustomGameDialog = false },
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                },
-            )
-        }
     }
 }
 

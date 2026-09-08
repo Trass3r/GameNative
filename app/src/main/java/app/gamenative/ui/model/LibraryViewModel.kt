@@ -677,12 +677,16 @@ class LibraryViewModel @Inject constructor(
 
     // Runs in viewModelScope so the copy survives configuration changes; a scope tied to the
     // composition would abort a "remove original" import partway through the move
-    fun importCustomGame(uri: Uri, removeOriginal: Boolean) {
+    fun importCustomGame(
+        uri: Uri,
+        removeOriginal: Boolean,
+        destination: CustomGameImporter.Destination,
+    ) {
         if (_importState.value.isImporting) return
         _importState.value = CustomGameImportState(isImporting = true)
         viewModelScope.launch(Dispatchers.IO) {
             var lastShown = 0L
-            val result = CustomGameImporter.importFromTreeUri(context, uri, removeOriginal) { progress ->
+            val result = CustomGameImporter.importFromTreeUri(context, uri, removeOriginal, destination) { progress ->
                 if (progress.copiedBytes - lastShown > 8_000_000L) {
                     lastShown = progress.copiedBytes
                     _importState.value = CustomGameImportState(isImporting = true, progress = progress)

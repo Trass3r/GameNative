@@ -759,6 +759,10 @@
     <string name="custom_game_import_failed">Import failed</string>
     <string name="custom_game_import_dialog_message">Select the folder containing the game. It will be imported into GameNative\'s storage so it can run without any storage permission. Large games may take a few minutes.</string>
     <string name="custom_game_import_remove_original">Remove original after import</string>
+    <string name="custom_game_storage_location_label">Storage location</string>
+    <string name="custom_game_storage_in_place">Use selected folder in place (no copy)</string>
+    <string name="custom_game_storage_copy_external">Copy to GameNative CustomGames (external managed folder)</string>
+    <string name="custom_game_storage_copy_internal">Copy to app-private internal storage</string>
     <string name="base_app_shortcut_created">Shortcut created</string>
     <string name="base_app_shortcut_failed">Failed to create shortcut: %s</string>
     <string name="base_app_images_fetched">Images fetched successfully</string>
