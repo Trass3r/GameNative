@@ -16,11 +16,31 @@ concurrency:
 
 jobs:
   build:
+    name: Build ${{ matrix.flavor_name }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - task: ":app:assembleLegacyDebug"
+            flavor_name: "Legacy Debug"
+            artifact_name: "app-legacy-debug"
+            artifact_path: "app/build/outputs/apk/legacy/debug/app-legacy-debug.apk"
+            
+          - task: ":app:assembleModernDebug"
+            flavor_name: "Modern Debug"
+            artifact_name: "app-modern-debug"
+            artifact_path: "app/build/outputs/apk/modern/debug/app-modern-debug.apk"
+            
+          - task: ":app:assembleLegacyXrDebug"
+            flavor_name: "Legacy Xr Debug"
+            artifact_name: "app-legacy-xr-debug"
+            artifact_path: "app/build/outputs/apk/legacyXr/debug/app-legacy-xr-debug.apk"
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Add swap
       run: |
@@ -38,10 +58,10 @@ jobs:
         cache: gradle
 
     - name: Validate Gradle wrapper
-      uses: gradle/actions/wrapper-validation@v4
+      uses: gradle/actions/wrapper-validation@v6
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v6
 
     - name: Inject dummy credentials
       run: |
@@ -52,28 +72,11 @@ jobs:
         CLOUD_PROJECT_NUMBER=123456789
         EOF
 
-    - name: Build Debug APKs with Gradle
-      run: |
-        ./gradlew -Pkotlin.daemon.jvmargs=-Xmx4g :app:assembleLegacyDebug :app:assembleModernDebug :app:assembleLegacyXrDebug
-        free -m
+    - name: Build Variant
+      run: ./gradlew -Pkotlin.daemon.jvmargs=-Xmx4g ${{ matrix.task }}
 
-    - name: Stop Gradle daemon to free memory
-      run: ./gradlew --stop
-
-    - name: Upload Legacy Debug APK
+    - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
-        name: app-legacy-debug
-        path: app/build/outputs/apk/legacy/debug/app-legacy-debug.apk
-
-    - name: Upload Modern Debug APK
-      uses: actions/upload-artifact@v7
-      with:
-        name: app-modern-debug
-        path: app/build/outputs/apk/modern/debug/app-modern-debug.apk
-
-    - name: Upload Legacy XR Debug APK
-      uses: actions/upload-artifact@v7
-      with:
-        name: app-legacy-xr-debug
-        path: app/build/outputs/apk/legacyXr/debug/app-legacyXr-debug.apk
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_path }}
