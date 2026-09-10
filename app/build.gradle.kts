@@ -75,6 +75,7 @@ android {
         buildConfigField("String", "POSTHOG_HOST",  "\"${secret("POSTHOG_HOST")}\"")
         buildConfigField("String", "STEAMGRIDDB_API_KEY", "\"${secret("STEAMGRIDDB_API_KEY")}\"")
         buildConfigField("String", "CLOUD_PROJECT_NUMBER", "\"${secret("CLOUD_PROJECT_NUMBER")}\"")
+        manifestPlaceholders["appName"] = "GameNative"
         val iconValue = "@mipmap/ic_launcher"
         val iconRoundValue = "@mipmap/ic_launcher_round"
         manifestPlaceholders.putAll(
@@ -168,6 +169,7 @@ android {
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
             applicationIdSuffix = ".debug"
+            manifestPlaceholders["appName"] = "GameNative Debug"
         }
         release {
             isMinifyEnabled = true
